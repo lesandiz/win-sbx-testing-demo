@@ -43,7 +43,9 @@ Give the sandbox command a timeout of at least 5 minutes.
 - The app **must be published self-contained**: the sandbox has no .NET runtime.
 - The sandbox has **no network** (`--network off`). Do not add tests that need the internet.
 - Run reports live in `%SANDBOX_MCP_HOME%\runs\<timestamp>\out\`, outside the repo. The path is printed as
-  `report` at the end of each run.
+  `report` at the end of each run. Because each run creates a new folder outside the working directory, some
+  agent hosts ask for permission before reading it. Read the files by their absolute path, or have the user
+  allow `%SANDBOX_MCP_HOME%\runs`.
 
 ## UI conventions
 
@@ -97,12 +99,17 @@ Use this loop when asked to "run the sandbox tests and fix failures".
    |---|---|---|
    | **Environment** | sbx/wsb errors, `0x80070002`, "already running", sandbox never boots, timeout before launch | Fix the setup (see Sandbox rules) or report it. **Do not edit code.** |
    | **App crash / no window** | `crashes` not `none`, process exited, no `Roman Calculator` window | Read `report.md`. Use `-Keep` + `sbx errors` for the event log. Fix the app. |
-   | **Wrong value** | a case with `actual` ≠ `expected` | Reproduce with a new xUnit test in Core first. If Core is right, the bug is in `MainWindow.xaml.cs`. |
+   | **Wrong value** | a case with `actual` ≠ `expected` | Check whether Core gets it right: find an existing xUnit test for that calculation, or add one. If Core is wrong, fix Core. If Core is right (including when existing Core tests already cover the case and pass), the bug is in the UI layer: `MainWindow.xaml` (button `Tag` values, `Click` handlers, AutomationIds) or `MainWindow.xaml.cs` (state handling). |
    | **Test bug** | selector not found, PS 5.1 syntax error, the test logic itself is wrong | Fix the test, but only if the spec (README/this file) shows the test is wrong. Say so explicitly. |
    | **Stale build** | the failure does not match the current code | You used `-NoPublish` after changing the app. Re-run without it. |
 
-3. **Fix** with the smallest change that addresses the cause. Add or adjust an xUnit test that fails before the
-   fix and passes after. Iterate with `dotnet test`, which takes seconds, not the sandbox.
+3. **Fix** with the smallest change that addresses the cause, and make sure a test guards it:
+   - **Core bug:** add or adjust an xUnit test that fails before the fix and passes after. Iterate with
+     `dotnet test`, which takes seconds, not the sandbox.
+   - **UI-only bug** (XAML wiring, handlers, display logic): no xUnit test can reach it, because the test project
+     references only Core. The sandbox UI test is the regression test. If the failing case is already in
+     `ui-test.ps1`, it guards the fix; don't add an xUnit test. If no UI case would have caught the bug, add one
+     to `$cases`.
 4. **Confirm** with a full `.\sandbox\Run-SandboxTest.ps1` (without `-NoPublish`).
 5. To **investigate** a puzzling UI state:
    ```powershell
@@ -122,6 +129,6 @@ Use this loop when asked to "run the sandbox tests and fix failures".
 - **Stop after 3 sandbox attempts at the same failure.** Report what you found and what you tried instead of
   continuing.
 - Never leave a sandbox running. End with `wsb list --raw` showing no environments.
-- When done, report for each failure: its category, root cause, files changed, and the final test results
-  (`dotnet test` count and sandbox PASS/FAIL with the report path).
+- When done, report for each failure: its category, root cause, files changed, which test guards the fix
+  (xUnit or UI case), and the final test results (`dotnet test` count and sandbox PASS/FAIL with the report path).
 - Do not commit `artifacts/` or anything from the run folders.
